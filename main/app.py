@@ -1,3 +1,5 @@
+import time
+
 from flask import Flask, jsonify, request, render_template
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -9,12 +11,13 @@ app = Flask(__name__)
 
 # Create a SQLAlchemy engine
 engine = create_engine(
-    'postgresql+psycopg2://postgres:postgres@localhost:5432/postgres', echo=True
+    'postgresql+psycopg2://postgres:postgres@postgres_container:5432/postgres', echo=True
 )
 
 # Create SQLAlchemy session
 session = Session(bind=engine)
 
+@app.before_request
 def create_tables():
     with session:
         Base.metadata.drop_all(bind=engine) # Drop all tables
@@ -24,7 +27,7 @@ def create_tables():
 
 @app.route('/')
 def main():
-    return render_template('index.html')
+    return 'OK', 200
 
 @app.route('/api/tweets', methods=['POST'])
 def create_tweet():
@@ -50,9 +53,4 @@ def create_tweet():
         session.add(tweet)
         session.commit()
 
-    return jsonify(author_id=_author), 201
-
-
-if __name__ == '__main__':
-    create_tables()
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    return jsonify(tweet_id=tweet.tweet_id), 201

@@ -1,0 +1,44 @@
+version: "3.8"
+
+networks:
+  monitoring:
+    driver: bridge
+
+services:
+  web:
+    build: main
+    container_name: web
+    ports:
+      - 5000:5000
+    networks:
+      - monitoring
+
+  postgres:
+    container_name: postgres_container
+    image: postgres:12-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=db
+      - log_destination=stderr
+      - logging_collector=on
+      - log_directory=./logs
+    ports:
+      - '5432:5432'
+    networks:
+      - monitoring
+    volumes:
+      - ./db:/var/lib/postgresql/data
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - 80:80
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./static:/static
+    networks:
+      - monitoring
+    restart: always
