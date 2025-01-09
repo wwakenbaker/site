@@ -27,7 +27,7 @@ def create_tables():
 
 @app.route('/')
 def main():
-    return 'OK', 200
+    return render_template("../client/static/index.html")
 
 @app.route('/api/tweets', methods=['POST'])
 def create_tweet():
@@ -54,3 +54,5 @@ def create_tweet():
         session.commit()
 
     return jsonify(tweet_id=tweet.tweet_id), 201
+
+

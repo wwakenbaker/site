@@ -1,17 +1,35 @@
-version: "3.8"
-
 networks:
   monitoring:
     driver: bridge
 
 services:
-  web:
-    build: main
-    container_name: web
+  client:
+    container_name: client
+    build:
+      context: .
+      dockerfile: client/Dockerfile
     ports:
-      - 5000:5000
+      - "8080:80"
+    depends_on:
+      server:
+        condition: service_started
+        restart: true
     networks:
       - monitoring
+
+  server:
+    container_name: server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "5000:5000"
+    networks:
+      - monitoring
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
 
   postgres:
     container_name: postgres_container
@@ -24,21 +42,16 @@ services:
       - log_destination=stderr
       - logging_collector=on
       - log_directory=./logs
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d postgres -U postgres" ]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+      start_period: 80s
     ports:
       - '5432:5432'
     networks:
       - monitoring
     volumes:
+      - ./init_db.sh:/docker-entrypoint-initdb.d/init_db.sh
       - ./db:/var/lib/postgresql/data
-
-  nginx:
-    image: nginx:latest
-    container_name: nginx
-    ports:
-      - 80:80
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./static:/static
-    networks:
-      - monitoring
-    restart: always
