@@ -27,7 +27,7 @@ def create_tables():
 
 @app.route('/')
 def main():
-    return render_template("../client/static/index.html")
+    return render_template("index.html")
 
 @app.route('/api/tweets', methods=['POST'])
 def create_tweet():
