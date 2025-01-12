@@ -1,7 +1,6 @@
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Column, Integer, String, ForeignKey
-
+from sqlalchemy import Integer, String, ForeignKey
 
 class Base(DeclarativeBase):
     pass
@@ -16,10 +15,10 @@ class Tweets(Base):
     __tablename__ = 'tweets'
 
     tweet_id: Mapped[int] = mapped_column(primary_key=True)
-    author: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
+    author_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
     content: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
-    # media: Mapped[ARRAY[int]] = mapped_column(Integer)
+    # media: Mapped[ARRAY[int]] = mapped_column(Integer, default=None)
 
 class Follows(Base):
     __tablename__ = 'follows'
