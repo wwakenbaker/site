@@ -1,8 +1,10 @@
 from pydantic import BaseModel
+from typing import Optional
+
 
 class CreateTweetSchema(BaseModel):
-    author_key: str
-    content: str
+    tweet_data: str
+    #tweet_media_ids: Optional[list[int]] = None
 
 class TweetSchema(CreateTweetSchema):
     tweet_id: int
