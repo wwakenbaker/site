@@ -32,6 +32,22 @@ def create_tables():
 def main():
     return FileResponse("../client/static/index.html")
 
+def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
+    _list = list(tweet.users_who_liked)
+    _list.append(user_id)
+    tweet.users_who_liked = _list
+    tweet.likes += 1
+    session.commit()
+    return {"result": True}
+
+def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
+    _list = list(tweet.users_who_liked)
+    _list.remove(user_id)
+    tweet.users_who_liked = _list
+    tweet.likes -= 1
+    session.commit()
+    return {"result": True}
+
 def check_api_key(api_key):
     # Check if the API key is valid
     return session.query(Users).filter(
@@ -94,22 +110,6 @@ def delete_tweet(tweet_id: int, api_key: str):
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
-
-def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
-    _list = list(tweet.users_who_liked)
-    _list.append(user_id)
-    tweet.users_who_liked = _list
-    tweet.likes += 1
-    session.commit()
-    return {"result": True}
-
-def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
-    _list = list(tweet.users_who_liked)
-    _list.remove(user_id)
-    tweet.users_who_liked = _list
-    tweet.likes -= 1
-    session.commit()
-    return {"result": True}
 
 @app.post('/api/tweets/{tweet_id: int}/likes/{api_key: str}')
 def like_tweet(tweet_id: int, api_key: str):
