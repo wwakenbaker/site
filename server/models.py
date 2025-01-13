@@ -18,7 +18,7 @@ class Tweets(Base):
     author_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
     tweet_data: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
-    users_who_liked: Mapped[ARRAY[int]] = mapped_column(JSONB, default=[])
+    users_who_liked: Mapped[ARRAY] = mapped_column(ARRAY(Integer), default=list)
     #tweet_media_ids: Mapped[ARRAY[int]] = mapped_column(Integer, nullable=True)
 
 class Follows(Base):

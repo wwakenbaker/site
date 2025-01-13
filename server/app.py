@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine
+from typing import Dict
+
+from sqlalchemy import create_engine, ColumnElement
 from sqlalchemy.orm import Session
 
 from fastapi import FastAPI, HTTPException
@@ -93,21 +95,38 @@ def delete_tweet(tweet_id: int, api_key: str):
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
 
+def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
+    _list = list(tweet.users_who_liked)
+    _list.append(user_id)
+    tweet.users_who_liked = _list
+    tweet.likes += 1
+    session.commit()
+    return {"result": True}
+
+def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
+    _list = list(tweet.users_who_liked)
+    _list.remove(user_id)
+    tweet.users_who_liked = _list
+    tweet.likes -= 1
+    session.commit()
+    return {"result": True}
+
 @app.post('/api/tweets/{tweet_id: int}/likes/{api_key: str}')
 def like_tweet(tweet_id: int, api_key: str):
     with session:
         if check_api_key(api_key):
             tweet = session.query(Tweets).get(tweet_id)
-            user_id = session.query(Users.user_id).where(
-                Users.api_key == api_key).first()[0]
-            if not user_id in tweet.users_who_liked:
-                tweet.users_who_liked.append(user_id)
-                tweet.likes += 1
-                session.commit()
-                return {"result": True}
+            if tweet:
+                user_id = session.query(Users.user_id).where(
+                    Users.api_key == api_key).first()[0]
+                if not user_id in tweet.users_who_liked:
+                    return like(tweet, user_id)
+                else:
+                    return HTTPException(status_code=409,
+                                         detail="User already liked the tweet")
             else:
-                return HTTPException(status_code=409,
-                                     detail="User already liked the tweet")
+                return HTTPException(status_code=404,
+                                         detail="Tweet not found")
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
@@ -117,19 +136,21 @@ def unlike_tweet(tweet_id: int, api_key: str):
     with session:
         if check_api_key(api_key):
             tweet = session.query(Tweets).get(tweet_id)
-            user_id = session.query(Users.user_id).where(
-                Users.api_key == api_key).first()[0]
-            if user_id in tweet.users_who_liked:
-                tweet.users_who_liked.remove(user_id)
-                tweet.likes -= 1
-                session.commit()
-                return {"result": True}
+            if tweet:
+                user_id = session.query(Users.user_id).where(
+                    Users.api_key == api_key).first()[0]
+                if user_id in tweet.users_who_liked:
+                    return unlike(tweet, user_id)
+                else:
+                    return HTTPException(status_code=409,
+                                         detail="User is not currently liking the tweet")
             else:
                 return HTTPException(status_code=404,
-                                     detail="User did not like the tweet")
+                                         detail="Tweet not found")
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
+
 
 @app.post('/api/users/{id_user: int}/follow/{api_key: str}')
 def follow_user(id_user: int, api_key: str):
@@ -175,6 +196,28 @@ def unfollow_user(id_user: int, api_key: str):
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
+
+@app.get('/api/tweets/{api_key: str}')
+def get_tweets(api_key: str):
+    # Get all tweets for the specified user
+    with session:
+        if check_api_key(api_key):
+            author_id = session.query(Users.user_id).where(
+                Users.api_key == api_key).first()[0]
+            tweets = session.query(Tweets).filter(Tweets.author_id != author_id)
+            return {"result": True}, {"tweets":
+                                          [{"id": tweet.tweet_id,
+                                          "content": tweet.tweet_data,
+                                          "author": tweet.author_id,
+                                          "likes": tweet.likes,
+                                          "users_who_liked":
+                                                [user for user in tweet.users_who_liked]}
+                                                for tweet in tweets]}
+
+        else:
+            return HTTPException(status_code=401,
+                                 detail="Invalid API key")
+
 
 app.mount("/static", StaticFiles(directory="../client/static"), name="static")
 app.mount("/js", StaticFiles(directory="../client/static/js"), name="js")
