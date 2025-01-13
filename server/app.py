@@ -161,6 +161,10 @@ def follow_user(id_user: int, api_key: str):
                 Users.api_key == api_key).first()[0]
             following_id = id_user
 
+            if follower_id == following_id:
+                return HTTPException(status_code=400,
+                                         detail="Cannot follow yourself")
+
             if not session.query(Follows).filter(
                     Follows.follower == follower_id,
                     Follows.following == following_id).first():
