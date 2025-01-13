@@ -9,3 +9,4 @@ class CreateTweetSchema(BaseModel):
 class TweetSchema(CreateTweetSchema):
     tweet_id: int
     likes: int
+    users_who_liked: Optional[list[int]] = None

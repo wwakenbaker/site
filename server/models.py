@@ -1,4 +1,4 @@
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, ForeignKey
 
@@ -18,6 +18,7 @@ class Tweets(Base):
     author_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
     tweet_data: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
+    users_who_liked: Mapped[ARRAY[int]] = mapped_column(JSONB, default=[])
     #tweet_media_ids: Mapped[ARRAY[int]] = mapped_column(Integer, nullable=True)
 
 class Follows(Base):
