@@ -1,14 +1,16 @@
+import starlette
+
 from typing import Dict
 
+from fastapi import FastAPI, HTTPException, UploadFile, Form, Depends
+from fastapi.params import File, Query
 from sqlalchemy import create_engine, ColumnElement
 from sqlalchemy.orm import Session
-
-from fastapi import FastAPI, HTTPException
 from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
-from models import Base, Tweets, Users, Follows
-from schemas import CreateTweetSchema
+from models import Base, Tweets, Users, Follows, Medias
+from schemas import CreateTweetSchema, FileUploadResponse
 
 # Create a fastapi app
 app = FastAPI()
@@ -21,16 +23,26 @@ engine = create_engine(
 # Create SQLAlchemy session
 session = Session(bind=engine)
 
-def create_tables():
+def create_tables() -> None:
     with session:
         Base.metadata.drop_all(bind=engine) # Drop all tables
         Base.metadata.create_all(bind=engine) # Create tables if they don't exist
         session.add(Users(user_id=1, api_key='test_api_key_1'))
+        session.add(Users(user_id=2, api_key='test_api_key_2'))
         session.commit()
 
-@app.get('/')
-def main():
-    return FileResponse("../client/static/index.html")
+def check_api_key(api_key) -> bool:
+    # Check if the API key is valid
+    return session.query(Users).filter(
+        Users.api_key == api_key).first() is not None
+
+def check_belonging_tweet(tweet_id, api_key) -> bool:
+    # Check if the tweet belongs to the specified user
+    author_id = session.query(Users.user_id).where(
+        Users.api_key == api_key).first()[0]
+    return session.query(Tweets).filter(
+        Tweets.tweet_id == tweet_id,
+        Tweets.author_id == author_id).first() is not None
 
 def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
     _list = list(tweet.users_who_liked)
@@ -48,53 +60,74 @@ def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
     session.commit()
     return {"result": True}
 
-def check_api_key(api_key):
-    # Check if the API key is valid
-    return session.query(Users).filter(
-        Users.api_key == api_key).first() is not None
+def validate_str(tweet_data: str = Form(...)):
+       return tweet_data
 
-def check_belonging_tweet(tweet_id, api_key):
-    # Check if the tweet belongs to the specified user
-    author_id = session.query(Users.user_id).where(
-        Users.api_key == api_key).first()[0]
-    return session.query(Tweets).filter(
-        Tweets.tweet_id == tweet_id,
-        Tweets.author_id == author_id).first() is not None
+@app.get('/', tags=["MAIN"])
+def main():
+    return FileResponse("../client/static/index.html")
 
-@app.post('/api/tweets/{api_key: str}')
-def create_tweet(data: CreateTweetSchema, api_key):
-    # Get tweet data from request
-    _api_key = api_key
-    tweet_data = data.tweet_data
-    #tweet_media_ids = data.tweet_media_ids
-
+@app.get('/api/tweets/', tags=["TWEETS"])
+def get_tweets(api_key: str):
+    # Get all tweets for the specified user
     with session:
-        if check_api_key(_api_key):
+        if check_api_key(api_key):
+            author_id = session.query(Users.user_id).where(
+                Users.api_key == api_key).first()[0]
+            tweets = session.query(Tweets).filter(Tweets.author_id != author_id)
+            try:
+                return {"result": True, "tweets":
+                    [{"id": tweet.tweet_id,
+                    "content": tweet.tweet_data,
+                    "attachments": tweet.attachments_ids,
+                    "author": {"id": tweet.author_id},
+                    "likes": [{"user_id": user_id} for user_id in tweet.users_who_liked]}
+                        for tweet in tweets]}
+            except Exception as e:
+                return {
+                    "result": False,
+                    "error_type": str(type(e).__name__),
+                    "error_message": str(e)
+                }
 
-        # Create a new tweet object
+        else:
+            return HTTPException(status_code=401,
+                                 detail="Invalid API key")
+
+@app.post('/api/tweets/', tags=["TWEETS"])
+def create_tweet(tweet_data: CreateTweetSchema = Depends(validate_str),
+                 api_key: str = Query(...),
+                 attachments: UploadFile = File(...)):
+    with session:
+        # Check if the API key is valid
+        if check_api_key(api_key):
+            #Check media files if provided and upload them
+            if isinstance(attachments, starlette.datastructures.UploadFile):
+                attachments_ids = upload_media(attachments)
+            elif isinstance(attachments, list):
+                attachments_ids = [upload_media(file) for file in attachments]
+        # Get the author ID based on the API key
             _author_id = session.query(Users.user_id).where(
-                Users.api_key == _api_key).first()[0]
+                Users.api_key == api_key).first()[0]
+        # Create a new tweet object
             tweet = Tweets(
                 author_id=_author_id,
                 tweet_data=tweet_data,
-                #tweet_media_ids=tweet_media_ids,
+                attachments_ids=[attachments_ids] if
+                attachments_ids else None,
             )
             # Add the tweet to the database
             session.add(tweet)
             session.commit()
             tweet_id = tweet.tweet_id
+
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
 
     return {"result": True, "tweet_id": tweet_id}
 
-@app.post('/api/medias/{api_key: str}')
-def upload_media(api_key):
-    # Handle media upload logic here
-    pass
-
-@app.delete('/api/tweets/{tweet_id: int}/{api_key: str}')
+@app.delete('/api/tweets/', tags=["TWEETS"])
 def delete_tweet(tweet_id: int, api_key: str):
     with session:
         if check_api_key(api_key):
@@ -111,7 +144,19 @@ def delete_tweet(tweet_id: int, api_key: str):
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
 
-@app.post('/api/tweets/{tweet_id: int}/likes/{api_key: str}')
+@app.post('/api/medias/', response_model=FileUploadResponse, tags=["TWEETS"])
+def upload_media(file: UploadFile = File(...)):
+    # Handle media upload logic here
+    file_name = file.filename
+    file_body = file.file.read()
+    content_type = file.content_type
+    with session:
+        media = Medias(file_name=file_name, file_body=file_body, content_type=content_type)
+        session.add(media)
+        session.commit()
+        return media.media_id
+
+@app.post('/api/tweets/likes/', tags=["LIKES"])
 def like_tweet(tweet_id: int, api_key: str):
     with session:
         if check_api_key(api_key):
@@ -131,7 +176,7 @@ def like_tweet(tweet_id: int, api_key: str):
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
 
-@app.delete('/api/tweets/{tweet_id: int}/likes/{api_key: str}')
+@app.delete('/api/tweets/likes/', tags=["LIKES"])
 def unlike_tweet(tweet_id: int, api_key: str):
     with session:
         if check_api_key(api_key):
@@ -152,7 +197,7 @@ def unlike_tweet(tweet_id: int, api_key: str):
                                  detail="Invalid API key")
 
 
-@app.post('/api/users/{id_user: int}/follow/{api_key: str}')
+@app.post('/api/users/follow/', tags=["FOLLOWS"])
 def follow_user(id_user: int, api_key: str):
     # Handle user following logic here
     with session:
@@ -178,7 +223,7 @@ def follow_user(id_user: int, api_key: str):
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
 
-@app.delete('/api/users/{id_user: int}/follow/{api_key: str}')
+@app.delete('/api/users/follow/', tags=["FOLLOWS"])
 def unfollow_user(id_user: int, api_key: str):
     with session:
         if check_api_key(api_key):
@@ -200,28 +245,6 @@ def unfollow_user(id_user: int, api_key: str):
         else:
             return HTTPException(status_code=401,
                                  detail="Invalid API key")
-
-@app.get('/api/tweets/{api_key: str}')
-def get_tweets(api_key: str):
-    # Get all tweets for the specified user
-    with session:
-        if check_api_key(api_key):
-            author_id = session.query(Users.user_id).where(
-                Users.api_key == api_key).first()[0]
-            tweets = session.query(Tweets).filter(Tweets.author_id != author_id)
-            return {"result": True}, {"tweets":
-                                          [{"id": tweet.tweet_id,
-                                          "content": tweet.tweet_data,
-                                          "author": tweet.author_id,
-                                          "likes": tweet.likes,
-                                          "users_who_liked":
-                                                [user for user in tweet.users_who_liked]}
-                                                for tweet in tweets]}
-
-        else:
-            return HTTPException(status_code=401,
-                                 detail="Invalid API key")
-
 
 app.mount("/static", StaticFiles(directory="../client/static"), name="static")
 app.mount("/js", StaticFiles(directory="../client/static/js"), name="js")

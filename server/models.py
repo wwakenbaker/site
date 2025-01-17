@@ -1,6 +1,7 @@
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, ForeignKey
+from sqlalchemy import Integer, String, ForeignKey, LargeBinary
+
 
 class Base(DeclarativeBase):
     pass
@@ -19,7 +20,7 @@ class Tweets(Base):
     tweet_data: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
     users_who_liked: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)
-    #tweet_media_ids: Mapped[ARRAY[int]] = mapped_column(Integer, nullable=True)
+    attachments_ids: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)
 
 class Follows(Base):
     __tablename__ = 'follows'
@@ -27,3 +28,12 @@ class Follows(Base):
     follow_id: Mapped[int] = mapped_column(primary_key=True)
     follower: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
     following: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
+
+class Medias(Base):
+    __tablename__ ='medias'
+
+    media_id: Mapped[int] = mapped_column(primary_key=True)
+    file_body: Mapped[str] = mapped_column(LargeBinary)
+    file_name: Mapped[str] = mapped_column(String)
+    content_type: Mapped[str] = mapped_column(String)
+
