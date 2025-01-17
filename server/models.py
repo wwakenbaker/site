@@ -10,6 +10,7 @@ class Users(Base):
     __tablename__ = 'users'
 
     user_id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, unique=True)
     api_key: Mapped[str] = mapped_column(String)
 
 class Tweets(Base):
@@ -17,6 +18,7 @@ class Tweets(Base):
 
     tweet_id: Mapped[int] = mapped_column(primary_key=True)
     author_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
+    author_name: Mapped[str] = mapped_column(ForeignKey('users.name'))
     tweet_data: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
     users_who_liked: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)

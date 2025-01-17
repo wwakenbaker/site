@@ -31,8 +31,8 @@ async def create_tables():
 
     async with async_session() as session:
         async with session.begin():
-            session.add(Users(user_id=1, api_key='test_api_key_1'))
-            session.add(Users(user_id=2, api_key='test_api_key_2'))
+            session.add(Users(user_id=1, api_key='test_api_key_1', name="John"))
+            session.add(Users(user_id=2, api_key='test_api_key_2', name="Alice"))
         await session.commit()
 
 async def check_api_key(api_key) -> bool:
@@ -75,7 +75,7 @@ async def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
         session.commit()
         return {"result": True}
 
-async def validate_str(tweet_data: str = Form(...)):
+async def validate_str(tweet_data: str = Form(...)) -> str:
        return tweet_data
 
 @app.get('/', tags=["MAIN"])
@@ -86,7 +86,7 @@ async def main():
 async def get_tweets(api_key: str):
     # Get all tweets for the specified user
     async with async_session() as session:
-        if check_api_key(api_key):
+        if await check_api_key(api_key):
             author_id = await session.execute(
                 select(Users.user_id).where(Users.api_key == api_key)
             )
@@ -95,23 +95,33 @@ async def get_tweets(api_key: str):
                 select(Tweets).filter(Tweets.author_id != author_id)
             )
             tweets = tweets.scalars().all()
+
+            async def get_name(user_id: int):
+                name = await session.execute(
+                    select(Users.name).filter(Users.user_id == user_id)
+                )
+                name = name.scalars().first()
+                return name
+
             try:
-                return {"result": True, "tweets":
-                    [{"id": tweet.tweet_id,
+                return [{"result": True, "tweets":
+                    {"id": tweet.tweet_id,
                     "content": tweet.tweet_data,
                     "attachments": [
                                    f"/api/medias/{i_attachment}"
                                    for i_attachment in tweet.attachments_ids
                                    ],
-                    "author": {"id": tweet.author_id},
-                    "likes": [{"user_id": user_id} for user_id in tweet.users_who_liked]}
-                        for tweet in tweets]}
+                    "author": {"id": tweet.author_id,
+                               "name": tweet.author_name},
+                    "likes": [{"user_id": user_id,
+                               "name": await get_name(user_id)} for user_id in tweet.users_who_liked]}}
+                    for tweet in tweets]
             except Exception as e:
                 return {
                     "result": False,
                     "error_type": str(type(e).__name__),
                     "error_message": str(e)
-                }
+                }, 500
 
         else:
             raise HTTPException(status_code=401,
@@ -126,25 +136,31 @@ async def get_media_path(media_id: int):
 
 @app.post('/api/tweets/', tags=["TWEETS"])
 async def create_tweet(tweet_data: CreateTweetSchema = Depends(validate_str),
-                 api_key: str = Query(...),
-                 attachments: UploadFile = File(...)):
+                api_key: str = Query(...),
+                attachments: UploadFile = File(...)):
     async with async_session() as session:
         async with session.begin():
             # Check if the API key is valid
-            if check_api_key(api_key):
+            if await check_api_key(api_key):
                 #Check media files if provided and upload them
                 if isinstance(attachments, starlette.datastructures.UploadFile):
                     attachments_ids = await upload_media(attachments)
                 elif isinstance(attachments, list):
                     attachments_ids = [await upload_media(file) for file in attachments]
             # Get the author ID based on the API key
-                result = await session.execute(
+                _author_id = await session.execute(
                     select(Users.user_id).where(Users.api_key == api_key)
                 )
-                _author_id = result.scalars().first()
+                _author_id = _author_id.scalars().first()
+                author_name = await session.execute(
+                    select(Users.name).where(Users.user_id == _author_id)
+                )
+                author_name = author_name.scalars().first()
+
             # Create a new tweet object
                 tweet = Tweets(
                     author_id=_author_id,
+                    author_name=author_name,
                     tweet_data=tweet_data,
                     attachments_ids=[attachments_ids] if
                     attachments_ids else None,

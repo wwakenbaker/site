@@ -8,6 +8,7 @@ class CreateTweetSchema(BaseModel):
 
 class TweetSchema(CreateTweetSchema):
     tweet_id: int
+    author_name: str
     likes: int
     users_who_liked: list
 
