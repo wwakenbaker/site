@@ -201,7 +201,7 @@ async def delete_tweet(tweet_id: int, api_key: str):
                 raise HTTPException(status_code=401,
                                      detail="Invalid API key")
 
-@app.post('/api/medias/', response_model=FileUploadResponse, tags=["TWEETS"])
+@app.post('/api/medias/', response_model=FileUploadResponse, tags=["MEDIAS"])
 async def upload_media(file: UploadFile = File(...)):
     # Handle media upload logic here
     file_name = file.filename
@@ -212,6 +212,18 @@ async def upload_media(file: UploadFile = File(...)):
         session.add(media)
         await session.commit()
         return media.media_id
+
+@app.get('/api/medias/{media_id}', tags=["MEDIAS"])
+async def get_media(media_id: int):
+    async with async_session() as session:
+        media = await session.execute(
+            select(Medias).filter(Medias.media_id == media_id)
+        )
+        media = media.scalars().first()
+        if media:
+            return Response(content=media.file_body, media_type=media.content_type)
+        else:
+            raise HTTPException(status_code=404, detail="Media not found")
 
 @app.post('/api/tweets/likes/', tags=["LIKES"])
 async def like_tweet(tweet_id: int, api_key: str):
