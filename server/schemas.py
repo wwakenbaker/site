@@ -4,7 +4,7 @@ from typing import List
 
 class CreateTweetSchema(BaseModel):
     tweet_data: str
-    attachments: List[int]
+    tweet_media_ids: List[int]
 
 class TweetSchema(CreateTweetSchema):
     tweet_id: int

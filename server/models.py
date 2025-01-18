@@ -22,7 +22,7 @@ class Tweets(Base):
     tweet_data: Mapped[str] = mapped_column(String)
     likes: Mapped[int] = mapped_column(Integer, default=0)
     users_who_liked: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)
-    attachments_ids: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)
+    tweet_media_ids: Mapped[ARRAY | list] = mapped_column(ARRAY(Integer), default=list)
 
 class Follows(Base):
     __tablename__ = 'follows'
