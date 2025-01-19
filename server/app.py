@@ -1,7 +1,6 @@
 from typing import Dict
 
-from pydantic import json
-
+import json
 import asyncio
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form, Depends, Body, Header
@@ -146,18 +145,32 @@ async def get_tweets(api_key: str = Header()):
             tweets = tweets.scalars().all()
 
             try:
-                return json.loads([{"result": True, "tweets":
-                    {"id": tweet.tweet_id,
-                    "content": tweet.tweet_data,
-                    "attachments": [
-                                   f"/api/medias/{i_attachment}"
-                                   for i_attachment in tweet.tweet_media_ids
-                                   ],
-                    "author": {"id": tweet.author_id,
-                               "name": tweet.author_name},
-                    "likes": [{"user_id": user_id,
-                               "name": await get_name(user_id)} for user_id in tweet.users_who_liked]}}
-                    for tweet in tweets])
+                return (
+                    {
+                        "result": True,
+                        "tweets": [
+                        {
+                            "id": tweet.tweet_id,
+                            "content": tweet.tweet_data,
+                            "attachments": [
+                                f"/api/medias/{i_attachment}"
+                                for i_attachment in tweet.tweet_media_ids
+                            ],
+                            "author": {
+                                "id": tweet.author_id,
+                                "name": tweet.author_name
+                            },
+                            "likes": [
+                                {
+                                    "user_id": user_id,
+                                    "name": await get_name(user_id)
+                                } async for user_id in tweet.users_who_liked
+                            ]
+                        },
+                    ]
+                }
+                    for tweet in tweets
+                )
             except Exception as e:
                 return {
                     "result": False,
