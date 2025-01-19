@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List, Union, Tuple
 import asyncio
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form, Depends, Body, Header
@@ -47,20 +47,18 @@ async def check_api_key(api_key) -> bool:
 
 async def check_belonging_tweet(tweet_id, api_key) -> bool:
     async with async_session() as session:
-        if check_api_key(api_key):
+        if await check_api_key(api_key):
             # Check if the tweet belongs to the specified user
             author_id = await session.execute(
                 select(Tweets.author_id).where(Tweets.tweet_id == tweet_id)
             )
             author_id = author_id.scalars().first()
-            return (
-                await session.execute(
-                    select(Tweets).filter(
-                        Tweets.tweet_id == tweet_id, Tweets.author_id == author_id
-                    )
-                )
-                is not None
+            user_id = await session.execute(
+                select(Users.user_id).filter(Users.api_key == api_key)
             )
+            user_id = user_id.scalars().first()
+            return author_id == user_id
+
 
 
 async def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
@@ -83,7 +81,7 @@ async def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
         return {"result": True}
 
 
-async def get_name(user_id: int):
+async def get_name(user_id: int) -> str:
     async with async_session() as session:
         name = await session.execute(
             select(Users.name).filter(Users.user_id == user_id)
@@ -92,7 +90,7 @@ async def get_name(user_id: int):
         return name
 
 
-async def get_follows(user_id: int, _for: str):
+async def get_follows(user_id: int, _for: str) -> List:
     # Get all followers for the specified user
     async with async_session() as session:
         if _for == "followers":
@@ -110,7 +108,7 @@ async def get_follows(user_id: int, _for: str):
             return following
 
 
-async def _get_user(user: Users):
+async def _get_user(user: Users) -> Dict:
     return {
         "result": True,
         "user": {
@@ -133,12 +131,12 @@ async def validate_str(tweet_data: str = Form(...)) -> str:
 
 
 @app.get("/", tags=["MAIN"])
-async def main():
+async def main() -> FileResponse:
     return FileResponse("../client/static/index.html")
 
 
 @app.get("/api/tweets", tags=["TWEETS"])
-async def get_tweets(api_key: str = Header()):
+async def get_tweets(api_key: str = Header()) -> Dict or HTTPException:
     # Get all tweets for the specified user
     async with async_session() as session:
         if await check_api_key(api_key):
@@ -192,7 +190,7 @@ async def get_tweets(api_key: str = Header()):
             raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-async def get_media_path(media_id: int):
+async def get_media_path(media_id: int) -> Response:
     with async_session() as session:
         media = await session.execute(
             select(Medias).filter(Medias.media_id == media_id)
@@ -201,7 +199,7 @@ async def get_media_path(media_id: int):
 
 
 @app.post("/api/tweets", tags=["TWEETS"])
-async def create_tweet(tweet_data: CreateTweetSchema, api_key: str = Header()):
+async def create_tweet(tweet_data: CreateTweetSchema, api_key: str = Header()) -> Tuple[Dict, int] or HTTPException:
     async with async_session() as session:
         async with session.begin():
             # Check if the API key is valid
@@ -236,7 +234,7 @@ async def create_tweet(tweet_data: CreateTweetSchema, api_key: str = Header()):
 
 
 @app.delete("/api/tweets/{tweet_id}", tags=["TWEETS"])
-async def delete_tweet(tweet_id: int, api_key: str = Header()):
+async def delete_tweet(tweet_id: int, api_key: str = Header()) -> Tuple[Dict, int] or HTTPException:
     async with async_session() as session:
         async with session.begin():
             if await check_api_key(api_key):
@@ -251,7 +249,8 @@ async def delete_tweet(tweet_id: int, api_key: str = Header()):
                 if await check_belonging_tweet(tweet_id, api_key):
                     await session.delete(tweet)
                     if media:
-                        await session.delete(media)
+                        for _media in media:
+                            await session.delete(_media)
                     await session.commit()
                     return {"result": True}, 204
                 else:
@@ -264,7 +263,7 @@ async def delete_tweet(tweet_id: int, api_key: str = Header()):
 
 
 @app.post("/api/medias", tags=["MEDIAS"])
-async def upload_media(file: UploadFile = File(...)):
+async def upload_media(file: UploadFile = File(...)) -> Dict or HTTPException:
     # Handle media upload logic here
     file_name = file.filename
     file_body = file.file.read()
@@ -275,11 +274,11 @@ async def upload_media(file: UploadFile = File(...)):
         )
         session.add(media)
         await session.commit()
-        return {"result": True, "media_id": media.media_id}, 201
+        return {"result": True, "media_id": media.media_id}
 
 
 @app.get("/api/medias/{media_id}", tags=["MEDIAS"])
-async def get_media(media_id: int):
+async def get_media(media_id: int) -> Response or HTTPException:
     async with async_session() as session:
         media = await session.execute(
             select(Medias).filter(Medias.media_id == media_id)
@@ -297,7 +296,7 @@ async def get_media(media_id: int):
 
 
 @app.post("/api/tweets/{tweet_id}/likes", tags=["LIKES"])
-async def like_tweet(tweet_id: int, api_key: str = Header()):
+async def like_tweet(tweet_id: int, api_key: str = Header()) -> Response or HTTPException:
     async with async_session() as session:
         async with session.begin():
             if await check_api_key(api_key):
@@ -323,7 +322,7 @@ async def like_tweet(tweet_id: int, api_key: str = Header()):
 
 
 @app.delete("/api/tweets/{tweet_id}/likes", tags=["LIKES"])
-async def unlike_tweet(tweet_id: int, api_key: str = Header()):
+async def unlike_tweet(tweet_id: int, api_key: str = Header()) -> Response or HTTPException:
     async with async_session() as session:
         async with session.begin():
             if await check_api_key(api_key):
@@ -350,7 +349,7 @@ async def unlike_tweet(tweet_id: int, api_key: str = Header()):
 
 
 @app.post("/api/users/{id_user}/follow", tags=["FOLLOWS"])
-async def follow_user(id_user: int, api_key: str = Header()):
+async def follow_user(id_user: int, api_key: str = Header()) -> Tuple[Dict, int] or HTTPException:
     # Handle user following logic here
     async with async_session() as session:
         async with session.begin():
@@ -387,7 +386,7 @@ async def follow_user(id_user: int, api_key: str = Header()):
 
 
 @app.delete("/api/users/{id_user}/follow", tags=["FOLLOWS"])
-async def unfollow_user(id_user: int, api_key: str = Header()):
+async def unfollow_user(id_user: int, api_key: str = Header()) -> Tuple[Dict, int] or HTTPException:
     async with async_session() as session:
         async with session.begin():
             if await check_api_key(api_key):
@@ -419,7 +418,7 @@ async def unfollow_user(id_user: int, api_key: str = Header()):
 
 
 @app.get("/api/users/me", tags=["USERS"])
-async def get_me(api_key: str = Header()):
+async def get_me(api_key: str = Header()) -> Dict or HTTPException:
     async with async_session() as session:
         user_id = await session.execute(
             select(Users.user_id).where(Users.api_key == api_key)
@@ -437,7 +436,7 @@ async def get_me(api_key: str = Header()):
 
 
 @app.get("/api/users/{user_id}", tags=["USERS"])
-async def get_user(user_id: int):
+async def get_user(user_id: int) -> Dict or HTTPException:
     async with async_session() as session:
         user = await session.execute(select(Users).filter(Users.user_id == user_id))
         user = user.scalars().first()
