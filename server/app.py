@@ -1,7 +1,7 @@
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Tuple
 import asyncio
 
-from fastapi import FastAPI, HTTPException, UploadFile, Form, Depends, Body, Header
+from fastapi import FastAPI, HTTPException, UploadFile, Header
 from fastapi.params import File
 from sqlalchemy import ColumnElement
 from sqlalchemy.future import select
@@ -124,11 +124,6 @@ async def _get_user(user: Users) -> Dict:
             ],
         },
     }
-
-
-async def validate_str(tweet_data: str = Form(...)) -> str:
-    return tweet_data
-
 
 @app.get("/", tags=["MAIN"])
 async def main() -> FileResponse:
