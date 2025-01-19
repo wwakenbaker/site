@@ -10,6 +10,7 @@ certifi==2024.12.14
 cffi==1.17.1
 charset-normalizer==3.4.1
 click==8.1.8
+compose==1.6.2
 cryptography==44.0.0
 Cython==0.29.37
 distro==1.9.0
@@ -30,6 +31,7 @@ jsonschema==3.2.0
 MarkupSafe==3.0.2
 packaging==24.2
 paramiko==3.5.0
+pi==0.1.2
 pipx==1.7.1
 platformdirs==4.3.6
 psycopg==3.2.3
@@ -55,3 +57,5 @@ userpath==1.9.2
 uvicorn==0.34.0
 websocket-client==0.59.0
 Werkzeug==3.1.3
+wheel==0.45.1
+
