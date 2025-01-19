@@ -1,6 +1,4 @@
 from typing import Dict
-
-import json
 import asyncio
 
 from fastapi import FastAPI, HTTPException, UploadFile, Form, Depends, Body, Header
@@ -136,41 +134,56 @@ async def get_tweets(api_key: str = Header()):
     # Get all tweets for the specified user
     async with async_session() as session:
         if await check_api_key(api_key):
-            author_id = await session.execute(
-                select(Users.user_id).where(Users.api_key == api_key)
-            )
-            author_id = author_id.scalars().first()
             tweets = await session.execute(
-                select(Tweets))
+                select(Tweets)
+            )
             tweets = tweets.scalars().all()
 
-            try:
-                return (
-                    {
-                        "result": True,
-                        "tweets": [
-                        {
-                            "id": tweet.tweet_id,
-                            "content": tweet.tweet_data,
-                            "attachments": [
-                                f"/api/medias/{i_attachment}"
-                                for i_attachment in tweet.tweet_media_ids
-                            ],
-                            "author": {
-                                "id": tweet.author_id,
-                                "name": tweet.author_name
-                            },
-                            "likes": [
-                                {
-                                    "user_id": user_id,
-                                    "name": await get_name(user_id)
-                                } async for user_id in tweet.users_who_liked
-                            ]
-                        },
-                    ]
-                }
-                    for tweet in tweets
+            user_id = await session.execute(
+                select(Users.user_id).where(Users.api_key == api_key)
+            )
+            user_id = user_id.scalars().first()
+
+
+            follows = await get_follows(user_id=user_id, _for="followers")
+            if follows:
+                follows_list_ids = [followers.following for followers in follows]
+                tweets = sorted(
+                    tweets,
+                    key=lambda tweet: sum(
+                        1 if user_id in tweet.users_who_liked else 0
+                        for user_id in follows_list_ids
+                    ),
+                    reverse=True
                 )
+
+            try:
+                tweet_responses = []
+                for tweet in tweets:
+                    tweet_response = {
+                        "id": tweet.tweet_id,
+                        "content": tweet.tweet_data,
+                        "attachments": [
+                            f"/api/medias/{i_attachment}"
+                            for i_attachment in tweet.tweet_media_ids
+                        ],
+                        "author": {
+                            "id": tweet.author_id,
+                            "name": tweet.author_name
+                        },
+                        "likes": [
+                            {
+                                "user_id": user_id,
+                                "name": await get_name(user_id)
+                            } for user_id in tweet.users_who_liked
+                        ]
+                    }
+                    tweet_responses.append(tweet_response)
+
+                return {
+                    "result": True,
+                    "tweets": tweet_responses
+                }
             except Exception as e:
                 return {
                     "result": False,
@@ -237,9 +250,11 @@ async def delete_tweet(tweet_id: int, api_key: str = Header()):
                 media = await session.execute(
                     select(Medias).filter(Medias.media_id.in_(tweet.tweet_media_ids))
                 )
+                media = media.scalars().all()
                 if await check_belonging_tweet(tweet_id, api_key):
                     await session.delete(tweet)
-                    await session.delete(media)
+                    if media:
+                        await session.delete(media)
                     await session.commit()
                     return {"result": True}
                 else:
@@ -274,7 +289,7 @@ async def get_media(media_id: int):
         else:
             raise HTTPException(status_code=404, detail="Media not found")
 
-@app.post('/api/tweets/likes', tags=["LIKES"])
+@app.post('/api/tweets/{tweet_id}/likes', tags=["LIKES"])
 async def like_tweet(tweet_id: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
@@ -327,7 +342,7 @@ async def unlike_tweet(tweet_id: int, api_key: str = Header()):
                                      detail="Invalid API key")
 
 
-@app.post('/api/users/{tweet_id}/follow', tags=["FOLLOWS"])
+@app.post('/api/users/{id_user}/follow', tags=["FOLLOWS"])
 async def follow_user(id_user: int, api_key: str = Header()):
     # Handle user following logic here
     async with async_session() as session:
@@ -361,7 +376,7 @@ async def follow_user(id_user: int, api_key: str = Header()):
                 raise HTTPException(status_code=401,
                                      detail="Invalid API key")
 
-@app.delete('/api/users/follow', tags=["FOLLOWS"])
+@app.delete('/api/users/{id_user}/follow', tags=["FOLLOWS"])
 async def unfollow_user(id_user: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
