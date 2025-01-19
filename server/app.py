@@ -23,6 +23,7 @@ engine = create_async_engine(DATABASE_URL, echo=True)
 # Create SQLAlchemy session
 async_session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
+
 async def create_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -30,31 +31,37 @@ async def create_tables():
 
     async with async_session() as session:
         async with session.begin():
-            session.add(Users(user_id=1, api_key='test', name="John"))
-            session.add(Users(user_id=2, api_key='test2', name="Alice"))
+            session.add(Users(user_id=1, api_key="test", name="John"))
+            session.add(Users(user_id=2, api_key="test2", name="Alice"))
         await session.commit()
+
 
 async def check_api_key(api_key) -> bool:
     # Check if the API key is valid
     async with async_session() as session:
-        return await session.execute(
-            select(Users.user_id).where(Users.api_key == api_key)
-        ) is not None
+        return (
+            await session.execute(select(Users.user_id).where(Users.api_key == api_key))
+            is not None
+        )
+
 
 async def check_belonging_tweet(tweet_id, api_key) -> bool:
     async with async_session() as session:
         if check_api_key(api_key):
             # Check if the tweet belongs to the specified user
             author_id = await session.execute(
-                select(Tweets.author_id).where(
-                    Tweets.tweet_id == tweet_id)
+                select(Tweets.author_id).where(Tweets.tweet_id == tweet_id)
             )
             author_id = author_id.scalars().first()
-            return await session.execute(
-                select(Tweets).filter(
-                    Tweets.tweet_id == tweet_id,
-                    Tweets.author_id == author_id)
-                ) is not None
+            return (
+                await session.execute(
+                    select(Tweets).filter(
+                        Tweets.tweet_id == tweet_id, Tweets.author_id == author_id
+                    )
+                )
+                is not None
+            )
+
 
 async def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
     async with async_session() as session:
@@ -65,6 +72,7 @@ async def like(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
         await session.commit()
         return {"result": True}
 
+
 async def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
     async with async_session() as session:
         _list = list(tweet.users_who_liked)
@@ -74,6 +82,7 @@ async def unlike(tweet: Tweets, user_id: ColumnElement[int]) -> Dict:
         session.commit()
         return {"result": True}
 
+
 async def get_name(user_id: int):
     async with async_session() as session:
         name = await session.execute(
@@ -81,6 +90,7 @@ async def get_name(user_id: int):
         )
         name = name.scalars().first()
         return name
+
 
 async def get_follows(user_id: int, _for: str):
     # Get all followers for the specified user
@@ -99,6 +109,7 @@ async def get_follows(user_id: int, _for: str):
             following = following.scalars().all()
             return following
 
+
 async def _get_user(user: Users):
     return {
         "result": True,
@@ -106,44 +117,38 @@ async def _get_user(user: Users):
             "id": user.user_id,
             "name": user.name,
             "following": [
-                {
-                "id": follow.following,
-                "name": await get_name(follow.following)
-                }
+                {"id": follow.following, "name": await get_name(follow.following)}
                 for follow in await get_follows(user.user_id, _for="following")
             ],
             "followers": [
-                {
-                    "id": follow.follower,
-                    "name": await get_name(follow.follower)
-                }
+                {"id": follow.follower, "name": await get_name(follow.follower)}
                 for follow in await get_follows(user.user_id, _for="followers")
             ],
         },
     }
 
-async def validate_str(tweet_data: str = Form(...)) -> str:
-       return tweet_data
 
-@app.get('/', tags=["MAIN"])
+async def validate_str(tweet_data: str = Form(...)) -> str:
+    return tweet_data
+
+
+@app.get("/", tags=["MAIN"])
 async def main():
     return FileResponse("../client/static/index.html")
 
-@app.get('/api/tweets', tags=["TWEETS"])
+
+@app.get("/api/tweets", tags=["TWEETS"])
 async def get_tweets(api_key: str = Header()):
     # Get all tweets for the specified user
     async with async_session() as session:
         if await check_api_key(api_key):
-            tweets = await session.execute(
-                select(Tweets)
-            )
+            tweets = await session.execute(select(Tweets))
             tweets = tweets.scalars().all()
 
             user_id = await session.execute(
                 select(Users.user_id).where(Users.api_key == api_key)
             )
             user_id = user_id.scalars().first()
-
 
             follows = await get_follows(user_id=user_id, _for="followers")
             if follows:
@@ -154,7 +159,7 @@ async def get_tweets(api_key: str = Header()):
                         1 if user_id in tweet.users_who_liked else 0
                         for user_id in follows_list_ids
                     ),
-                    reverse=True
+                    reverse=True,
                 )
 
             try:
@@ -167,33 +172,25 @@ async def get_tweets(api_key: str = Header()):
                             f"/api/medias/{i_attachment}"
                             for i_attachment in tweet.tweet_media_ids
                         ],
-                        "author": {
-                            "id": tweet.author_id,
-                            "name": tweet.author_name
-                        },
+                        "author": {"id": tweet.author_id, "name": tweet.author_name},
                         "likes": [
-                            {
-                                "user_id": user_id,
-                                "name": await get_name(user_id)
-                            } for user_id in tweet.users_who_liked
-                        ]
+                            {"user_id": user_id, "name": await get_name(user_id)}
+                            for user_id in tweet.users_who_liked
+                        ],
                     }
                     tweet_responses.append(tweet_response)
 
-                return {
-                    "result": True,
-                    "tweets": tweet_responses
-                }
+                return {"result": True, "tweets": tweet_responses}
             except Exception as e:
                 return {
                     "result": False,
                     "error_type": str(type(e).__name__),
-                    "error_message": str(e)
+                    "error_message": str(e),
                 }
 
         else:
-            raise HTTPException(status_code=401,
-                                 detail="Invalid API key")
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
 
 async def get_media_path(media_id: int):
     with async_session() as session:
@@ -202,14 +199,14 @@ async def get_media_path(media_id: int):
         )
         return Response(content=media.file_body, media_type="image/png")
 
-@app.post('/api/tweets', tags=["TWEETS"])
-async def create_tweet(tweet_data: CreateTweetSchema,
-                api_key: str = Header()):
+
+@app.post("/api/tweets", tags=["TWEETS"])
+async def create_tweet(tweet_data: CreateTweetSchema, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
             # Check if the API key is valid
             if await check_api_key(api_key):
-            # Get the author ID based on the API key
+                # Get the author ID based on the API key
                 _author_id = await session.execute(
                     select(Users.user_id).where(Users.api_key == api_key)
                 )
@@ -219,7 +216,7 @@ async def create_tweet(tweet_data: CreateTweetSchema,
                 )
                 author_name = author_name.scalars().first()
 
-            # Create a new tweet object
+                # Create a new tweet object
                 tweet = Tweets(
                     author_id=_author_id,
                     author_name=author_name,
@@ -233,12 +230,12 @@ async def create_tweet(tweet_data: CreateTweetSchema,
                 tweet_id = tweet.tweet_id
 
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
     return {"result": True, "tweet_id": tweet_id}
 
-@app.delete('/api/tweets/{tweet_id}', tags=["TWEETS"])
+
+@app.delete("/api/tweets/{tweet_id}", tags=["TWEETS"])
 async def delete_tweet(tweet_id: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
@@ -258,26 +255,30 @@ async def delete_tweet(tweet_id: int, api_key: str = Header()):
                     await session.commit()
                     return {"result": True}
                 else:
-                    raise HTTPException(status_code=404,
-                                         detail="Tweet not found or "
-                                                "not belonging to the user")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Tweet not found or " "not belonging to the user",
+                    )
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
-@app.post('/api/medias', tags=["MEDIAS"])
+
+@app.post("/api/medias", tags=["MEDIAS"])
 async def upload_media(file: UploadFile = File(...)):
     # Handle media upload logic here
     file_name = file.filename
     file_body = file.file.read()
     content_type = file.content_type
     async with async_session() as session:
-        media = Medias(file_name=file_name, file_body=file_body, content_type=content_type)
+        media = Medias(
+            file_name=file_name, file_body=file_body, content_type=content_type
+        )
         session.add(media)
         await session.commit()
         return {"result": True, "media_id": media.media_id}
 
-@app.get('/api/medias/{media_id}', tags=["MEDIAS"])
+
+@app.get("/api/medias/{media_id}", tags=["MEDIAS"])
 async def get_media(media_id: int):
     async with async_session() as session:
         media = await session.execute(
@@ -289,7 +290,8 @@ async def get_media(media_id: int):
         else:
             raise HTTPException(status_code=404, detail="Media not found")
 
-@app.post('/api/tweets/{tweet_id}/likes', tags=["LIKES"])
+
+@app.post("/api/tweets/{tweet_id}/likes", tags=["LIKES"])
 async def like_tweet(tweet_id: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
@@ -306,16 +308,16 @@ async def like_tweet(tweet_id: int, api_key: str = Header()):
                     if not user_id in tweet.users_who_liked:
                         return await like(tweet, user_id)
                     else:
-                        raise HTTPException(status_code=409,
-                                             detail="User already liked the tweet")
+                        raise HTTPException(
+                            status_code=409, detail="User already liked the tweet"
+                        )
                 else:
-                    raise HTTPException(status_code=404,
-                                             detail="Tweet not found")
+                    raise HTTPException(status_code=404, detail="Tweet not found")
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
-@app.delete('/api/tweets/{tweet_id}/likes', tags=["LIKES"])
+
+@app.delete("/api/tweets/{tweet_id}/likes", tags=["LIKES"])
 async def unlike_tweet(tweet_id: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
@@ -332,17 +334,17 @@ async def unlike_tweet(tweet_id: int, api_key: str = Header()):
                     if user_id in tweet.users_who_liked:
                         return await unlike(tweet, user_id)
                     else:
-                        raise HTTPException(status_code=409,
-                                             detail="User is not currently liking the tweet")
+                        raise HTTPException(
+                            status_code=409,
+                            detail="User is not currently liking the tweet",
+                        )
                 else:
-                    raise HTTPException(status_code=404,
-                                             detail="Tweet not found")
+                    raise HTTPException(status_code=404, detail="Tweet not found")
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-@app.post('/api/users/{id_user}/follow', tags=["FOLLOWS"])
+@app.post("/api/users/{id_user}/follow", tags=["FOLLOWS"])
 async def follow_user(id_user: int, api_key: str = Header()):
     # Handle user following logic here
     async with async_session() as session:
@@ -355,41 +357,45 @@ async def follow_user(id_user: int, api_key: str = Header()):
                 following_id = id_user
 
                 if follower_id == following_id:
-                    raise HTTPException(status_code=400,
-                                             detail="Cannot follow yourself")
-
+                    raise HTTPException(
+                        status_code=400, detail="Cannot follow yourself"
+                    )
 
                 follows = await session.execute(
                     select(Follows).filter(
-                    Follows.follower == follower_id,
-                    Follows.following == following_id
-                    ))
+                        Follows.follower == follower_id,
+                        Follows.following == following_id,
+                    )
+                )
                 follows = follows.scalars().first()
                 if not follows:
                     session.add(Follows(follower=follower_id, following=following_id))
                     await session.commit()
                     return {"result": True}
                 else:
-                    raise HTTPException(status_code=409,
-                                         detail="User is already following the specified user")
+                    raise HTTPException(
+                        status_code=409,
+                        detail="User is already following the specified user",
+                    )
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
-@app.delete('/api/users/{id_user}/follow', tags=["FOLLOWS"])
+
+@app.delete("/api/users/{id_user}/follow", tags=["FOLLOWS"])
 async def unfollow_user(id_user: int, api_key: str = Header()):
     async with async_session() as session:
         async with session.begin():
             if await check_api_key(api_key):
                 follower_id = await session.execute(
-                    select(Users.user_id).where(Users.api_key == api_key))
+                    select(Users.user_id).where(Users.api_key == api_key)
+                )
                 follower_id = follower_id.scalars().first()
                 following_id = id_user
 
                 follow = await session.execute(
                     select(Follows).filter(
                         Follows.follower == follower_id,
-                        Follows.following == following_id
+                        Follows.following == following_id,
                     )
                 )
                 follow = follow.scalars().first()
@@ -399,39 +405,39 @@ async def unfollow_user(id_user: int, api_key: str = Header()):
                     await session.commit()
                     return {"result": True}
                 else:
-                    raise HTTPException(status_code=404,
-                                         detail="User is not following the specified user")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="User is not following the specified user",
+                    )
             else:
-                raise HTTPException(status_code=401,
-                                     detail="Invalid API key")
+                raise HTTPException(status_code=401, detail="Invalid API key")
 
-@app.get('/api/users/me', tags=["USERS"])
+
+@app.get("/api/users/me", tags=["USERS"])
 async def get_me(api_key: str = Header()):
     async with async_session() as session:
         user_id = await session.execute(
             select(Users.user_id).where(Users.api_key == api_key)
         )
         user_id = user_id.scalars().first()
-        user = await session.execute(
-            select(Users).filter(Users.user_id == user_id)
-        )
+        user = await session.execute(select(Users).filter(Users.user_id == user_id))
         user = user.scalars().first()
         if user:
             return await _get_user(user)
         else:
             raise HTTPException(status_code=404, detail="User not found")
 
-@app.get('/api/users/{user_id}', tags=["USERS"])
+
+@app.get("/api/users/{user_id}", tags=["USERS"])
 async def get_user(user_id: int):
     async with async_session() as session:
-        user = await session.execute(
-            select(Users).filter(Users.user_id == user_id)
-        )
+        user = await session.execute(select(Users).filter(Users.user_id == user_id))
         user = user.scalars().first()
         if user:
             return await _get_user(user)
         else:
             raise HTTPException(status_code=404, detail="User not found")
+
 
 app.mount("/static", StaticFiles(directory="../client/static"), name="static")
 app.mount("/js", StaticFiles(directory="../client/static/js"), name="js")
@@ -440,4 +446,5 @@ app.mount("/css", StaticFiles(directory="../client/static/css"), name="css")
 if __name__ == "__main__":
     asyncio.run(create_tables())
     import uvicorn
+
     uvicorn.run("app:app", host="127.0.0.1", port=8000)
