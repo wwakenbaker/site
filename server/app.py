@@ -232,7 +232,7 @@ async def create_tweet(tweet_data: CreateTweetSchema, api_key: str = Header()):
             else:
                 raise HTTPException(status_code=401, detail="Invalid API key")
 
-    return {"result": True, "tweet_id": tweet_id}
+    return {"result": True, "tweet_id": tweet_id}, 201
 
 
 @app.delete("/api/tweets/{tweet_id}", tags=["TWEETS"])
@@ -253,7 +253,7 @@ async def delete_tweet(tweet_id: int, api_key: str = Header()):
                     if media:
                         await session.delete(media)
                     await session.commit()
-                    return {"result": True}
+                    return {"result": True}, 204
                 else:
                     raise HTTPException(
                         status_code=404,
@@ -275,7 +275,7 @@ async def upload_media(file: UploadFile = File(...)):
         )
         session.add(media)
         await session.commit()
-        return {"result": True, "media_id": media.media_id}
+        return {"result": True, "media_id": media.media_id}, 201
 
 
 @app.get("/api/medias/{media_id}", tags=["MEDIAS"])
@@ -286,7 +286,12 @@ async def get_media(media_id: int):
         )
         media = media.scalars().first()
         if media:
-            return Response(content=media.file_body, media_type=media.content_type)
+            try:
+                return Response(content=media.file_body, media_type=media.content_type)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"Error while retrieving media: {str(e)}"
+                )
         else:
             raise HTTPException(status_code=404, detail="Media not found")
 
@@ -306,7 +311,7 @@ async def like_tweet(tweet_id: int, api_key: str = Header()):
                     )
                     user_id = user_id.scalars().first()
                     if not user_id in tweet.users_who_liked:
-                        return await like(tweet, user_id)
+                        return await like(tweet, user_id), 201
                     else:
                         raise HTTPException(
                             status_code=409, detail="User already liked the tweet"
@@ -332,7 +337,7 @@ async def unlike_tweet(tweet_id: int, api_key: str = Header()):
                     )
                     user_id = user_id.scalars().first()
                     if user_id in tweet.users_who_liked:
-                        return await unlike(tweet, user_id)
+                        return await unlike(tweet, user_id), 204
                     else:
                         raise HTTPException(
                             status_code=409,
@@ -371,7 +376,7 @@ async def follow_user(id_user: int, api_key: str = Header()):
                 if not follows:
                     session.add(Follows(follower=follower_id, following=following_id))
                     await session.commit()
-                    return {"result": True}
+                    return {"result": True}, 201
                 else:
                     raise HTTPException(
                         status_code=409,
@@ -403,7 +408,7 @@ async def unfollow_user(id_user: int, api_key: str = Header()):
                 if follow:
                     await session.delete(follow)
                     await session.commit()
-                    return {"result": True}
+                    return {"result": True}, 204
                 else:
                     raise HTTPException(
                         status_code=404,
@@ -423,7 +428,10 @@ async def get_me(api_key: str = Header()):
         user = await session.execute(select(Users).filter(Users.user_id == user_id))
         user = user.scalars().first()
         if user:
-            return await _get_user(user)
+            try:
+                return await _get_user(user)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
         else:
             raise HTTPException(status_code=404, detail="User not found")
 
@@ -434,7 +442,10 @@ async def get_user(user_id: int):
         user = await session.execute(select(Users).filter(Users.user_id == user_id))
         user = user.scalars().first()
         if user:
-            return await _get_user(user)
+            try:
+                return await _get_user(user)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
         else:
             raise HTTPException(status_code=404, detail="User not found")
 
