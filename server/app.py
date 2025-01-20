@@ -1,40 +1,18 @@
 from typing import Dict, List, Tuple
-import asyncio
+
 
 from fastapi import FastAPI, HTTPException, UploadFile, Header
 from fastapi.params import File
 from sqlalchemy import ColumnElement
 from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from starlette.responses import FileResponse, Response
-from starlette.staticfiles import StaticFiles
+from starlette.responses import Response
+
 
 from models import Base, Tweets, Users, Follows, Medias
 from schemas import CreateTweetSchema
-
+from init_db import async_session
 # Create a fastapi app
 app = FastAPI()
-# Create a SQLAlchemy engine
-DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
-engine = create_async_engine(DATABASE_URL, echo=True)
-
-
-# Create SQLAlchemy session
-async_session = sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
-
-
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with async_session() as session:
-        async with session.begin():
-            session.add(Users(user_id=1, api_key="test", name="John"))
-            session.add(Users(user_id=2, api_key="test2", name="Alice"))
-        await session.commit()
-
 
 async def check_api_key(api_key) -> bool:
     # Check if the API key is valid
@@ -124,11 +102,6 @@ async def _get_user(user: Users) -> Dict:
             ],
         },
     }
-
-@app.get("/", tags=["MAIN"])
-async def main() -> FileResponse:
-    return FileResponse("../client/static/index.html")
-
 
 @app.get("/api/tweets", tags=["TWEETS"])
 async def get_tweets(api_key: str = Header()) -> Dict or HTTPException:
@@ -444,12 +417,6 @@ async def get_user(user_id: int) -> Dict or HTTPException:
             raise HTTPException(status_code=404, detail="User not found")
 
 
-app.mount("/static", StaticFiles(directory="../client/static"), name="static")
-app.mount("/js", StaticFiles(directory="../client/static/js"), name="js")
-app.mount("/css", StaticFiles(directory="../client/static/css"), name="css")
-
-if __name__ == "__main__":
-    asyncio.run(create_tables())
-    import uvicorn
-
-    uvicorn.run("app:app", host="127.0.0.1", port=8000)
+# app.mount("/static", StaticFiles(directory="../client/static"), name="static")
+# app.mount("/js", StaticFiles(directory="../client/static/js"), name="js")
+# app.mount("/css", StaticFiles(directory="../client/static/css"), name="css")
